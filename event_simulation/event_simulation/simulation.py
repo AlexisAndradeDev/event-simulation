@@ -168,10 +168,8 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
             else:
                 node.queue.append((event.client_id, current_time))
 
-        # If the event is a departure
+        # If the event is a departure, the customer finishes being served by this node
         else:
-            # The client being served in this node finishes now
-
             node.num_served += 1
             node.busy -= 1
 
@@ -197,46 +195,31 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
                 )
 
             # Route to the next node
-            if event.node_name.startswith('reg'):
-                if case_name in ['base', 'solution3', 'solution4']:
-                    # Will go to the examination room corresponding
-                    # to the registration room number
-                    # reg2 -> exam2
-                    next_node_name = event.node_name.replace('reg', 'exam')
-                elif case_name in ['solution5']:
-                    # All registration rooms go to the same
-                    # single examination room
-                    next_node_name = 'exam'
-            elif event.node_name.startswith('exam'):
-                if case_name in ['base']:
-                    # Will go to the consultation room corresponding
-                    # to the examination room number
-                    # consult2 -> exam2
-                    next_node_name = event.node_name.replace('exam', 'consult')
-                elif case_name in ['solution3', 'solution4', 'solution5']:
-                    # Routing with probability
-                    # There is a probability p_to_consult1 that the patient
-                    # goes to consult1 and 1 - p_to_consult1 that they
-                    # go to consult2
-                    next_node_name = (
-                        'consult1' if random.random() < p_to_consult1
-                        else 'consult2'
-                    )
-            elif event.node_name.startswith('consult'):
-                # After consultation, leaves the system
-                # Skip to the next iteration of future_events
-                # without generating an arrival event to the next node for
-                # this client
+            if not node.routing_probabilities:
+                # No routing probabilities means clients always leave the
+                # system after this node
                 continue
-            else:
-                raise ValueError(f"Nombre de nodo {event.node_name} en evento de salida {event.client_id} inesperado.")
+
+            rnd = random.random()
+            cumulative = 0.0
+            next_node_name = None
+            for node_name, prob in node.routing_probabilities.items():
+                cumulative += prob
+                if rnd < cumulative:
+                    next_node_name = node_name
+                    break
+
+            # If no next node was selected, this means the customer leaves the
+            # system, so skip to the next event
+            if next_node_name is None:
+                continue
 
             # Generate an arrival event at the next node for the current
             # client (client leaves current node and arrives at the next)
             heapq.heappush(
                 future_events,
                 Event(
-                    current_time, 'arrival', next_node_name, event.client_id, False
+                    current_time, 'arrival', next_node_name, event.client_id, external=False,
                 )
             )
 

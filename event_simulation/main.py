@@ -17,27 +17,16 @@ print(f"Semilla aleatoria: {seed}")
 
 # Base model
 nodes_base = {
-    'reg1':    Node('reg1',     mu=8.0,  servers=1, external_lambda=4.0),
-    'reg2':    Node('reg2',     mu=10.0, servers=1, external_lambda=3.0),
-    'exam1':   Node('exam1',    mu=6.0,  servers=1),
-    'exam2':   Node('exam2',    mu=6.0,  servers=1),
-    'consult1':Node('consult1', mu=2.5,  servers=2),
-    'consult2':Node('consult2', mu=3.0,  servers=2),
-}
-
-# Solution 3 model
-nodes_solution3 = copy.deepcopy(nodes_base)
-
-# Solution 4 model
-nodes_solution4 = copy.deepcopy(nodes_solution3)
-
-# Solution 5 model
-nodes_solution5 = {
-    'reg1':    Node('reg1',     mu=8.0,  servers=1, external_lambda=4.0),
-    'reg2':    Node('reg2',     mu=10.0, servers=1, external_lambda=3.0),
-    'exam':    Node('exam',     mu=6,    servers=2),
-    'consult1':Node('consult1', mu=2.5,  servers=2),
-    'consult2':Node('consult2', mu=3.0,  servers=2),
+    'reg1': Node('reg1', mu=8.0, servers=1, routing_probabilities={"exam1": 1.0},
+        external_lambda=4.0,
+    ),
+    'reg2': Node('reg2', mu=10.0, servers=1, routing_probabilities={"exam2": 1.0},
+        external_lambda=3.0,
+    ),
+    'exam1': Node('exam1', mu=6.0, servers=1, routing_probabilities={"consult1": 1.0}),
+    'exam2': Node('exam2', mu=6.0, servers=1, routing_probabilities={"consult2": 1.0}),
+    'consult1': Node('consult1', mu=2.5, servers=2, routing_probabilities={}),
+    'consult2': Node('consult2', mu=3.0, servers=2, routing_probabilities={}),
 }
 
 # Create a directory for the execution results inside "runs"
@@ -60,6 +49,18 @@ base_metrics = simulate_case(
 L_q1 = base_metrics['consult1']['Lq']
 L_q2 = base_metrics['consult2']['Lq']
 p_to_consult1 = L_q2 / (L_q1 + L_q2)
+
+# Solution 3 model
+nodes_solution3 = copy.deepcopy(nodes_base)
+nodes_solution3['exam1'].routing_probabilities = {
+    "consult1": p_to_consult1,
+    "consult2": 1.0 - p_to_consult1,
+}
+nodes_solution3['exam2'].routing_probabilities = {
+    "consult1": p_to_consult1,
+    "consult2": 1.0 - p_to_consult1,
+}
+
 print(f"Proportion of patients going to consult1: {p_to_consult1:.4f}")
 solution3_metrics = simulate_case(
     "solution3", T, copy.deepcopy(nodes_solution3),
@@ -72,6 +73,19 @@ solution3_metrics = simulate_case(
 mu1 = nodes_base['consult1'].mu
 mu2 = nodes_base['consult2'].mu
 p_to_consult1 = mu1 / (mu1 + mu2)
+
+# Solution 4 model
+nodes_solution4 = copy.deepcopy(nodes_solution3)
+nodes_solution4['exam1'].routing_probabilities = {
+    "consult1": p_to_consult1,
+    "consult2": 1.0 - p_to_consult1,
+}
+nodes_solution4['exam2'].routing_probabilities = {
+    "consult1": p_to_consult1,
+    "consult2": 1.0 - p_to_consult1,
+}
+
+
 print(f"Proportion of patients going to consult1: {p_to_consult1:.4f}")
 solution4_metrics = simulate_case(
     "solution4", T, copy.deepcopy(nodes_solution4),
@@ -80,7 +94,23 @@ solution4_metrics = simulate_case(
 )
 
 # Solution case 5
+# Solution 5 model from nodes_solution4 with a single 'exam' node
 # Use the same p_to_consult1 as solution 4
+nodes_solution5 = {
+    'reg1': copy.deepcopy(nodes_solution4['reg1']),
+    'reg2': copy.deepcopy(nodes_solution4['reg2']),
+    'exam': Node('exam', mu=6.0, servers=2,
+        routing_probabilities={
+            "consult1": p_to_consult1,
+            "consult2": 1.0 - p_to_consult1,
+        },
+    ),
+    'consult1': copy.deepcopy(nodes_solution4['consult1']),
+    'consult2': copy.deepcopy(nodes_solution4['consult2']),
+}
+nodes_solution5['reg1'].routing_probabilities = {"exam": 1.0}
+nodes_solution5['reg2'].routing_probabilities = {"exam": 1.0}
+
 print(f"Proportion of patients going to consult1: {p_to_consult1:.4f}")
 solution5_metrics = simulate_case(
     "solution5", T, copy.deepcopy(nodes_solution5),
