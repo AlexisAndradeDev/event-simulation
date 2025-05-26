@@ -70,4 +70,4 @@ BSD-3-Clause — see the `LICENSE` file for details.
 
 ## Contact / Support
 
-For questions, bug reports, or feature requests please open an issue on GitHub or contact the maintainer.
+For questions, bug reports, or feature requests please open an issue on GitHub or contact the maintainer at alexis.martinez.contacto@gmail.com.
