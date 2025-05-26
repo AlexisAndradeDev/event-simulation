@@ -73,7 +73,7 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
             - rho: Proportion of time servers are busy.
             - throughput: Throughput (number of customers served per hour).
     """
-    print(f"------ Simulación '{case_name}' ------")
+    print(f"------ Simulation '{case_name}' ------")
 
     if save_results:
         assert run_dir is not None, "run_dir cannot be None if save_results is True."
