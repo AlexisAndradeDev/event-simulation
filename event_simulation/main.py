@@ -15,14 +15,10 @@ seed = random.randint(1, 100000) # generate a random seed
 random.seed(seed)
 print(f"Semilla aleatoria: {seed}")
 
-# External arrival parameters (patients/hour)
-lambda1 = 4.0 # to reg1
-lambda2 = 3.0 # to reg2
-
 # Base model
 nodes_base = {
-    'reg1':    Node('reg1',     mu=8.0,  servers=1),
-    'reg2':    Node('reg2',     mu=10.0, servers=1),
+    'reg1':    Node('reg1',     mu=8.0,  servers=1, external_lambda=4.0),
+    'reg2':    Node('reg2',     mu=10.0, servers=1, external_lambda=3.0),
     'exam1':   Node('exam1',    mu=6.0,  servers=1),
     'exam2':   Node('exam2',    mu=6.0,  servers=1),
     'consult1':Node('consult1', mu=2.5,  servers=2),
@@ -37,8 +33,8 @@ nodes_solution4 = copy.deepcopy(nodes_solution3)
 
 # Solution 5 model
 nodes_solution5 = {
-    'reg1':    Node('reg1',     mu=8.0,  servers=1),
-    'reg2':    Node('reg2',     mu=10.0, servers=1),
+    'reg1':    Node('reg1',     mu=8.0,  servers=1, external_lambda=4.0),
+    'reg2':    Node('reg2',     mu=10.0, servers=1, external_lambda=3.0),
     'exam':    Node('exam',     mu=6,    servers=2),
     'consult1':Node('consult1', mu=2.5,  servers=2),
     'consult2':Node('consult2', mu=3.0,  servers=2),
@@ -54,7 +50,7 @@ run_dir.mkdir(parents=True, exist_ok=True)
 
 # Base case
 base_metrics = simulate_case(
-    "base", T, lambda1, lambda2, copy.deepcopy(nodes_base),
+    "base", T, copy.deepcopy(nodes_base),
     save_results=True, run_dir=run_dir, seed=seed,
 )
 
@@ -66,7 +62,7 @@ L_q2 = base_metrics['consult2']['Lq']
 p_to_consult1 = L_q2 / (L_q1 + L_q2)
 print(f"Proportion of patients going to consult1: {p_to_consult1:.4f}")
 solution3_metrics = simulate_case(
-    "solution3", T, lambda1, lambda2, copy.deepcopy(nodes_solution3),
+    "solution3", T, copy.deepcopy(nodes_solution3),
     p_to_consult1=p_to_consult1,
     save_results=True, run_dir=run_dir, seed=seed,
 )
@@ -78,7 +74,7 @@ mu2 = nodes_base['consult2'].mu
 p_to_consult1 = mu1 / (mu1 + mu2)
 print(f"Proportion of patients going to consult1: {p_to_consult1:.4f}")
 solution4_metrics = simulate_case(
-    "solution4", T, lambda1, lambda2, copy.deepcopy(nodes_solution4),
+    "solution4", T, copy.deepcopy(nodes_solution4),
     p_to_consult1=p_to_consult1,
     save_results=True, run_dir=run_dir, seed=seed,
 )
@@ -87,7 +83,7 @@ solution4_metrics = simulate_case(
 # Use the same p_to_consult1 as solution 4
 print(f"Proportion of patients going to consult1: {p_to_consult1:.4f}")
 solution5_metrics = simulate_case(
-    "solution5", T, lambda1, lambda2, copy.deepcopy(nodes_solution5),
+    "solution5", T, copy.deepcopy(nodes_solution5),
     p_to_consult1=p_to_consult1,
     save_results=True, run_dir=run_dir, seed=seed,
 )

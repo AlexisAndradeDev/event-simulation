@@ -10,7 +10,7 @@ from event_simulation.event import Event
 
 def save_simulation(simulation_name: str, run_dir: Path,
         metrics: dict[str, dict[str, float]], nodes: dict[str, Node],
-        lambda1: float, lambda2: float, T: float, seed: int) -> None:
+        T: float, seed: int) -> None:
     simulation_dir = run_dir / simulation_name
     simulation_dir.mkdir(parents=True, exist_ok=True)
 
@@ -22,9 +22,10 @@ def save_simulation(simulation_name: str, run_dir: Path,
 
     params = {
         'seed': seed,
-        'nodes': {name: {'mu': node.mu, 'servers': node.servers} for name, node in nodes.items()},
-        'lambda1': lambda1,
-        'lambda2': lambda2,
+        'nodes': {
+            name: {'mu': node.mu, 'servers': node.servers, 'external_lambda': node.external_lambda}
+            for name, node in nodes.items()
+        },
         'T': T,
     }
     params_path = simulation_dir / 'simulation_params.json'
@@ -40,9 +41,8 @@ def display_simulation_metrics(simulation_name: str, metrics: dict[str, dict[str
     print(f"Simulation results: {simulation_name}")
     print(tabulate(formatted_df, headers='keys', tablefmt='grid', showindex=True))
 
-def simulate_case(case_name: str, T: float, lambda1: float, lambda2: float,
-        nodes: dict[str, Node], p_to_consult1: float = None,
-        show_simulation_metrics: bool = True,
+def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
+        p_to_consult1: float = None, show_simulation_metrics: bool = True,
         save_results: bool = False, run_dir: Path = None, seed: int = None,
         ) -> dict[str, dict[str, float]]:
     """
@@ -51,8 +51,6 @@ def simulate_case(case_name: str, T: float, lambda1: float, lambda2: float,
     Args:
         case_name: Name of the simulation case.
         T: Simulation time (hours).
-        lambda1: External arrival rate to 'reg1' (patients/hour).
-        lambda2: External arrival rate to 'reg2' (patients/hour).
         nodes: Dictionary <name, Node>
         p_to_consult1: Probability that a patient goes to 'consult1'
             from an examination room. Only if case_name is 'solution3',
@@ -100,18 +98,17 @@ def simulate_case(case_name: str, T: float, lambda1: float, lambda2: float,
     # The event with the smallest time is the first to be popped using
     # heappop (which removes and returns the first element of the list).
 
-    # First external arrivals to reg1 and reg2
-    heapq.heappush(
-        future_events, 
-        Event(current_time+random.expovariate(lambda1), 'arrival', 'reg1', client_id, True),
-    )
-    client_id += 1
-
-    heapq.heappush(
-        future_events,
-        Event(current_time+random.expovariate(lambda2), 'arrival', 'reg2', client_id, True),
-    )
-    client_id += 1
+    # First external arrivals to nodes with external arrivals
+    for node in nodes.values():
+        if node.external_lambda:
+            heapq.heappush(
+                future_events, 
+                Event(
+                    current_time + random.expovariate(node.external_lambda),
+                    'arrival', node.name, client_id, external=True,
+                ),
+            )
+            client_id += 1
 
     # Process future events until no more events exist
     # or until the event time is greater than the maximum simulation time (T)
@@ -142,13 +139,12 @@ def simulate_case(case_name: str, T: float, lambda1: float, lambda2: float,
             # Each external arrival event passes through this code section
             # only once, when it first arrives to the system.
             if event.external:
-                lam = lambda1 if event.node_name == 'reg1' else lambda2
                 # Create new external arrival event (new client)
                 heapq.heappush(
                     future_events,
                     Event(
-                        current_time+random.expovariate(lam), 'arrival',
-                        event.node_name, client_id, True,
+                        current_time + random.expovariate(node.external_lambda),
+                        'arrival', event.node_name, client_id, True,
                     ),
                 )
                 client_id += 1
@@ -268,6 +264,6 @@ def simulate_case(case_name: str, T: float, lambda1: float, lambda2: float,
     if show_simulation_metrics:
         display_simulation_metrics(case_name, metrics)
     if save_results:
-        save_simulation(case_name, run_dir, metrics, nodes, lambda1, lambda2, T, seed)
+        save_simulation(case_name, run_dir, metrics, nodes, T, seed)
 
     return metrics
