@@ -4,9 +4,9 @@ import heapq
 import pandas as pd
 from tabulate import tabulate
 from pathlib import Path
-from collections import defaultdict
 from event_simulation.node import Node
 from event_simulation.event import Event
+from event_simulation.simulation_state import SimulationState
 
 def save_simulation(simulation_name: str, run_dir: Path,
         metrics: dict[str, dict[str, float]], nodes: dict[str, Node],
@@ -50,7 +50,7 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
     
     Args:
         case_name: Name of the simulation case.
-        T: Simulation time (hours).
+        T: Simulation time (any unit of time, typically hours).
         nodes: Dictionary <name, Node>
         p_to_consult1: Probability that a patient goes to 'consult1'
             from an examination room. Only if case_name is 'solution3',
@@ -66,12 +66,12 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
     Returns:
         metrics: Dictionary <node_name, dict<metric_name, float>>
             Explanation of the metrics:
-            - Wq: Average client in queue time (hours).
-            - W: Average client in system time (hours).
+            - Wq: Average client in queue time (same unit of time as T).
+            - W: Average client in system time (same unit of time as T).
             - Lq: Average queue length (number of customers in queue).
             - L: Average system length (number of customers in system).
             - rho: Proportion of time servers are busy.
-            - throughput: Throughput (number of customers served per hour).
+            - throughput: Throughput (number of customers served per unit of time).
     """
     print(f"------ Simulation '{case_name}' ------")
 
@@ -80,17 +80,7 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
         assert seed is not None, "seed cannot be None if save_results is True."
         assert run_dir.exists(), f"run_dir '{run_dir}' does not exist."
 
-    # future_events is the list of future events (pending processing)
-    # sorted by time
-    future_events = []
-    # Current simulation time (goes from 0 to T, in hours)
-    current_time = 0.0
-    # Client ID for the current event
-    client_id = 0
-    # Dictionary whose keys are node names
-    # The value for each key is the list of times each client waited in
-    # queue at that node
-    waits = defaultdict(list)
+    state = SimulationState()
 
     # A heap is used to handle the future events list.
     # This way, events are ordered from smallest to largest time
@@ -102,37 +92,36 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
     for node in nodes.values():
         if node.external_lambda:
             heapq.heappush(
-                future_events, 
+                state.future_events, 
                 Event(
-                    current_time + random.expovariate(node.external_lambda),
-                    'arrival', node.name, client_id, external=True,
+                    state.current_time + random.expovariate(node.external_lambda),
+                    'arrival', node.name, state.client_id, external=True,
                 ),
             )
-            client_id += 1
+            state.client_id += 1
 
     # Process future events until no more events exist
     # or until the event time is greater than the maximum simulation time (T)
-    while future_events:
-        event: Event = heapq.heappop(future_events)
+    while state.future_events:
+        event: Event = heapq.heappop(state.future_events)
 
         if event.time > T:
             break
 
         # Advance simulation clock
-        time_passed_since_last_event = event.time - current_time
-        current_time = event.time
+        time_passed_since_last_event = event.time - state.current_time
+        state.current_time = event.time
 
         # Update areas (integrals)
-        # (Used to calculate performance metrics exactly for the simulation)
+        # (Used to calculate accurate performance metrics for the simulation)
         for nd in nodes.values():
             nd.area_q += len(nd.queue) * time_passed_since_last_event
             nd.area_busy += nd.busy * time_passed_since_last_event
 
         node = nodes[event.node_name]
 
-        # If the event is an arrival, attend to the client
         if event.kind == 'arrival':
-            # If it is an external arrival, generate a new arrival event
+            # If the event is an external arrival, generate a new arrival event
             # to generate a new external client.
             # Between each external client, wait a random time
             # following an exponential distribution with rate lambda.
@@ -141,32 +130,32 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
             if event.external:
                 # Create new external arrival event (new client)
                 heapq.heappush(
-                    future_events,
+                    state.future_events,
                     Event(
-                        current_time + random.expovariate(node.external_lambda),
-                        'arrival', event.node_name, client_id, True,
+                        state.current_time + random.expovariate(node.external_lambda),
+                        'arrival', event.node_name, state.client_id, True,
                     ),
                 )
-                client_id += 1
+                state.client_id += 1
 
             # If the node has available servers, attend the client
             # and generate a departure event for them
             if node.busy < node.servers:
                 node.busy += 1
-                waits[node.name].append(0.0) # no queue wait
+                state.waits[node.name].append(0.0) # no queue wait
                 # service time until the client departs
                 service_time = random.expovariate(node.mu)
                 heapq.heappush(
-                    future_events,
+                    state.future_events,
                     Event(
-                        current_time+service_time, 'departure', node.name,
+                        state.current_time+service_time, 'departure', node.name,
                         event.client_id,
                     )
                 )
             # If the node has all servers busy, add to the queue
             # and wait for a server to become free
             else:
-                node.queue.append((event.client_id, current_time))
+                node.queue.append((event.client_id, state.current_time))
 
         # If the event is a departure, the customer finishes being served by this node
         else:
@@ -181,15 +170,15 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
 
                 # Add the time this next client waited in queue
                 # to the wait times list
-                waits[node.name].append(current_time - time_the_next_client_in_queue_arrived)
+                state.waits[node.name].append(state.current_time - time_the_next_client_in_queue_arrived)
 
                 node.busy += 1
                 # service time until this next client departs
                 service_time = random.expovariate(node.mu)
                 heapq.heappush(
-                    future_events,
+                    state.future_events,
                    Event(
-                        current_time+service_time, 'departure', node.name,
+                        state.current_time+service_time, 'departure', node.name,
                         next_client_in_queue_id,
                     )
                 )
@@ -217,9 +206,9 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
             # Generate an arrival event at the next node for the current
             # client (client leaves current node and arrives at the next)
             heapq.heappush(
-                future_events,
+                state.future_events,
                 Event(
-                    current_time, 'arrival', next_node_name, event.client_id, external=False,
+                    state.current_time, 'arrival', next_node_name, event.client_id, external=False,
                 )
             )
 
@@ -229,10 +218,10 @@ def simulate_case(case_name: str, T: float, nodes: dict[str, Node],
         Lq = nd.area_q / T
         L = nd.area_q / T + nd.area_busy / T
         rho = nd.area_busy / T / nd.servers
-        Wq = sum(waits[name]) / len(waits[name]) if waits[name] else 0.0
+        Wq = sum(state.waits[name]) / len(state.waits[name]) if state.waits[name] else 0.0
         W = L / (nd.num_served / T) if nd.num_served > 0 else 0.0
-        # throughput is the number of customers served per hour at the node
-        # (number of customers served by the node / simulation time in hours)
+        # throughput is the number of customers served per unit of time at the node
+        # (number of customers served by the node / simulation time)
         X = nd.num_served / T
 
         metrics[name] = {
